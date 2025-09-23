@@ -1,0 +1,22 @@
+# Ignore Conda environments
+.conda/
+env/
+venv/
+
+# Python cache/compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS-specific
+.DS_Store
+Thumbs.db
