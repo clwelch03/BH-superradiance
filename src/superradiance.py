@@ -8,7 +8,8 @@ def superradiant_rate(n, l, m, axion_mass, BH_mass, BH_spin):
     # first line of equation (1)
     first_line = axion_mass * (axion_mass * BH_mass)**(4*l+4) * (m * BH_spin - 2 * axion_mass * outer_horizon_radius)
     # second line of equation (1)
-    combinatorics = (2**(4*l+2) * np.factorial(2*l + 1 + n)) / ((l + 1 + n)**(2*l+4) * np.factorial(n))
+    combinatorics = (2**(4*l+2) * np.factorial(2*l + 1 + n)) / ((l + 1 + n)**(2*l+4) * np.factorial(n)) * (
+                        np.factorial(l) / (np.factorial(2*l) * np.factorial(2*l + 1)))**2
     # third line of equation (1)
     k_values = np.arange(1, l+1)
     product_over_k = np.power(k_values, 2) * (1-BH_spin)**2 + np.ones(l) * (m * BH_spin - 2 * axion_mass * outer_horizon_radius)**2
