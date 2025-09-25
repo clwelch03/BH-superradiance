@@ -15,7 +15,7 @@ def superradiant_rate(n, l, m, axion_mass, BH_mass, BH_spin):
     
     # third line of equation (1)
     k_values = np.arange(1, l+1)
-    product_over_k = np.power(k_values, 2) * (1-BH_spin)**2 + np.ones(l) * (m * BH_spin - 2 * axion_mass * outer_horizon_radius)**2
+    product_over_k = np.power(k_values, 2) * (1-BH_spin**2) + np.ones(l) * (m * BH_spin - 2 * axion_mass * outer_horizon_radius)**2
     
     return first_line * combinatorics * np.prod(product_over_k)
 
@@ -43,8 +43,9 @@ def find_highest_achievable_mode(n, axion_mass, BH_mass, initial_BH_spin, merger
     return maximum_checked_mode
 
 def final_BH_spin(axion_mass, BH_mass, initial_BH_spin, merger_timescale):
-    l_m_max = find_highest_achievable_mode(0, axion_mass, BH_mass, initial_BH_spin, merger_timescale)
-    return mode_spin(0, l_m_max, l_m_max, axion_mass, BH_mass, merger_timescale)
+    # l_m_max = find_highest_achievable_mode(0, axion_mass, BH_mass, initial_BH_spin, merger_timescale)
+    l_m_max = 1
+    return mode_spin(0, l_m_max, l_m_max, axion_mass, BH_mass, merger_timescale)[0]
 
 TEN_BILLION_YEARS_IN_SECONDS = 3.15457e17
 
@@ -56,11 +57,14 @@ def calculate_everything(BH_mass_M_sol, axion_mass_eV, initial_BH_spin, merger_t
     axion_mass = axion_mass_eV * 1.519e15
     highest_achievable_mode = find_highest_achievable_mode(0, axion_mass, BH_mass, initial_BH_spin, merger_timescale)
     
-    print(f"mu * M = {BH_mass * axion_mass}")
-    # superradiance_gamma = superradiant_rate(0, highest_achievable_mode, highest_achievable_mode, axion_mass, BH_mass, initial_BH_spin)
+    print(f"BH mass = {BH_mass} M_sol")
+    print(f"axion mass = {axion_mass_eV} eV")
+    print(f"initial spin chi_F = {initial_BH_spin}\n\n")
+    superradiance_gamma = superradiant_rate(0, 1, 1, axion_mass, BH_mass, initial_BH_spin)
 
-    # print(f"Superradiant rate: {superradiance_gamma}")
-    # print(f"Instability timescale: {1/superradiance_gamma}")
-    # print(f"Highest achievable mode: {highest_achievable_mode}")
+    print(f"Superradiant rate: {superradiance_gamma}")
+    print(f"Instability timescale: {1/superradiance_gamma}")
+    print(f"Highest achievable mode: {highest_achievable_mode}")
+    print(f"Final BH spin: {final_BH_spin(axion_mass, BH_mass, initial_BH_spin, merger_timescale)}")
     
-calculate_everything(5.0, 1e-13, 0.99, TEN_BILLION_YEARS_IN_SECONDS)
+calculate_everything(5.0, 1e-12, 0.99, TEN_BILLION_YEARS_IN_SECONDS)
