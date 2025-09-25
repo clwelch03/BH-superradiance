@@ -37,14 +37,13 @@ def find_highest_achievable_mode(n, axion_mass, BH_mass, initial_BH_spin, merger
             growth_timescale_m = 180 * emission_timescale(n, m, m, axion_mass, BH_mass,
                                                           mode_spin(n, m-1, m-1, axion_mass, BH_mass, merger_timescale))
         
-        if growth_timescale_m < merger_timescale:
+        if growth_timescale_m > merger_timescale:
             return m-1
     
     return maximum_checked_mode
 
 def final_BH_spin(axion_mass, BH_mass, initial_BH_spin, merger_timescale):
-    # l_m_max = find_highest_achievable_mode(0, axion_mass, BH_mass, initial_BH_spin, merger_timescale)
-    l_m_max = 1
+    l_m_max = find_highest_achievable_mode(0, axion_mass, BH_mass, initial_BH_spin, merger_timescale)
     return mode_spin(0, l_m_max, l_m_max, axion_mass, BH_mass, merger_timescale)[0]
 
 TEN_BILLION_YEARS_IN_SECONDS = 3.15457e17
