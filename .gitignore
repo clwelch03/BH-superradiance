@@ -23,3 +23,6 @@ Thumbs.db
 
 # Large LIGO files
 *.h5
+
+# Orion's notebook
+signal_inj_test_notebook.ipynb
