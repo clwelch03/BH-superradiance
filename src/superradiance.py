@@ -3,6 +3,7 @@ import scipy.optimize as optim
 import astropy.constants as consts
 import astropy.units as units
 import math 
+import warnings
 
 
 def superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_mass, BH_dimensionless_spin) -> float:
@@ -20,6 +21,11 @@ def superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_ma
     Returns:
         float: The calculated rate of instability.
     """
+    # Sometimes the optimizer will try a spin value outside the [0, 1] range
+    if BH_dimensionless_spin < 0 or BH_dimensionless_spin > 1:
+        # warnings.warn("Dimensionless spin parameter took on the invalid value {}. Clamped to valid range.".format(BH_dimensionless_spin))
+        BH_dimensionless_spin = np.clip(BH_dimensionless_spin, 0, 1)
+
     # Define the outer horizon radius $r_+$
     outer_horizon_radius = BH_geometric_mass * (1 + np.sqrt(1 - BH_dimensionless_spin**2))
     
@@ -85,6 +91,8 @@ def find_highest_achievable_mode(n, axion_geometric_mass, BH_geometric_mass, ini
     """
     maximum_checked_mode = 5
     
+    #TODO: include orion's chi_F < chi_counter and tau_grow > tau_s checks
+
     for m in range(1, maximum_checked_mode+1):
         # For the first mode (l=m=1), the growth timescale is based off the initial BH spin
         # For higher modes, the growth timescale is based off the critical spin of the previous mode
@@ -117,9 +125,9 @@ def final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merg
     return critical_spin(0, l_m_max, l_m_max, axion_geometric_mass, BH_geometric_mass, merger_timescale)[0]
 
 
-TEN_BILLION_YEARS_IN_SECONDS = 3.15457e17
-M_SOL_TO_GEOMETRIC = (consts.G  * consts.M_sun / consts.c**3).to(units.s).value # type: ignore
-EV_TO_GEOMETRIC = (1 * units.eV / consts.hbar).to(units.Hz).value # type: ignore
+TEN_BILLION_YEARS_IN_SECONDS = (10 * units.Gyr).to(units.s).value
+M_SOL_TO_GEOMETRIC = (consts.G  * consts.M_sun / consts.c**3).to(units.s).value
+EV_TO_GEOMETRIC = (1 * units.eV / consts.hbar).to(units.Hz).value
 
 def calculate_everything(BH_mass_M_sol, axion_mass_eV, initial_BH_spin, merger_timescale):
     if not (0 <= initial_BH_spin <= 1):
@@ -138,52 +146,3 @@ def calculate_everything(BH_mass_M_sol, axion_mass_eV, initial_BH_spin, merger_t
     print(f"Instability timescale: {1/superradiance_gamma}")
     print(f"Highest achievable mode: {highest_achievable_mode}")
     print(f"Final BH spin: {final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale)}")
-    
-# calculate_everything(5.0, 1e-12, 0.99, TEN_BILLION_YEARS_IN_SECONDS)
-
-###
-
-#let's test things
-
-M = 60.0 #5 M_sol
-mu = 1.0e-12 #eV
-chi = 1.0
-s_to_yr = 3.17e-8
-yr_to_s = 1.0/s_to_yr
-tau_s = 1e10 * yr_to_s
-
-calculate_everything(M, mu, chi, tau_s)
-
-# print("M (M_sol): ", M)
-# print("mu (eV): ", mu)
-# print("chi_F: ", chi)
-# print("n, l, m: ", np.array([n, l, m]))
-# print("\n")
-
-# Gamma_test = superradiant_instability_rate(n, l, m, mu, M, chi)
-
-# print("Gamma: ", Gamma_test)
-
-# tau_inst_test = superradiant_instability_timescale(n, l, m, mu, M, chi)
-# print("tau_inst (s): ", tau_inst_test) #seconds
-# print("tau_inst (yr): ", tau_inst_test*s_to_yr)
-
-# print("tau_s (s): ", tau_s)
-
-# chi_test = solve_chi(n, l, m, mu, M, tau_s)
-
-# print("chi_test: ", chi_test)
-
-# tau_grow_test = 180*tau_inst(n, 2, 2, mu, M, chi_test)
-# print("tau_grow after first phase (m=2): ", tau_grow_test)
-
-# chi_F = 1.0
-# m_max_test = get_highest_mode(n, mu, M, chi_F, tau_s)
-
-# print("m_max: ", m_max_test)
-
-# final_spin_test = get_merger_spin(mu, M, chi_F, tau_s)
-
-# print("final spin: ", final_spin_test)
-
-# print(np.shape(final_spin_test[0]))
