@@ -70,7 +70,7 @@ def critical_spin(n, l, m, axion_geometric_mass, BH_geometric_mass, merger_times
     Returns:
         float: The critical spin for the given mode.
     """
-    return optim.fsolve(lambda chi: superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_mass, chi) - 1/merger_timescale, 0.5)
+    return optim.fsolve(lambda chi: superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_mass, chi) - 1/merger_timescale, 0.9)[0]
 
 
 def find_highest_achievable_mode(n, axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale) -> int:
@@ -89,21 +89,25 @@ def find_highest_achievable_mode(n, axion_geometric_mass, BH_geometric_mass, ini
     Returns:
         int: The maximum value of m such that [n, m, m] is an accessible superradiant mode.
     """
-    maximum_checked_mode = 5
-    
-    #TODO: include orion's chi_F < chi_counter and tau_grow > tau_s checks
+    maximum_checked_mode = 3
+    previous_spin = initial_BH_spin
 
     for m in range(1, maximum_checked_mode+1):
         # For the first mode (l=m=1), the growth timescale is based off the initial BH spin
         # For higher modes, the growth timescale is based off the critical spin of the previous mode
-        if m == 1:
-            growth_timescale_m = 180 * superradiant_instability_timescale(n, m, m, axion_geometric_mass, BH_geometric_mass, initial_BH_spin)
-        else:
-            growth_timescale_m = 180 * superradiant_instability_timescale(n, m, m, axion_geometric_mass, BH_geometric_mass,
-                                                          critical_spin(n, m-1, m-1, axion_geometric_mass, BH_geometric_mass, merger_timescale))
+        growth_timescale_m = 180 * superradiant_instability_timescale(n, m, m, axion_geometric_mass, BH_geometric_mass, previous_spin)
         
-        if growth_timescale_m > merger_timescale:
+        # Naive checks on the mode
+        if growth_timescale_m < 0 or growth_timescale_m > merger_timescale:
+            return m-1 
+        
+        # Avoid solver blowup
+        candidate_spin = critical_spin(0, m, m, axion_geometric_mass, BH_geometric_mass, merger_timescale)
+        if not (0.0 <= candidate_spin <= 1.0):
             return m-1
+        
+        # Prepare for next iteration
+        previous_spin = candidate_spin
     
     return maximum_checked_mode
 
@@ -122,7 +126,12 @@ def final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merg
         float: The final dimensionless spin of the black hole.
     """
     l_m_max = find_highest_achievable_mode(0, axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale)
-    return critical_spin(0, l_m_max, l_m_max, axion_geometric_mass, BH_geometric_mass, merger_timescale)[0]
+
+    # If no mode can be excited, return the initial spin
+    if l_m_max == 0:
+        return initial_BH_spin
+    
+    return critical_spin(0, l_m_max, l_m_max, axion_geometric_mass, BH_geometric_mass, merger_timescale)
 
 
 TEN_BILLION_YEARS_IN_SECONDS = (10 * units.Gyr).to(units.s).value
