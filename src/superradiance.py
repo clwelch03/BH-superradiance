@@ -8,7 +8,7 @@ import warnings
 
 def superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_mass, BH_dimensionless_spin) -> float:
     """
-    Calculate the superradiant instability rate for a black hole. Based on Equation (1) of arxiv/1908.02312.
+    Calculates the superradiant instability rate for a black hole. Based on Equation (1) of arxiv/1908.02312.
 
     Args:
         n (int): The adjusted principal quantum number n-l-m.
@@ -134,9 +134,9 @@ def final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merg
     return critical_spin(0, l_m_max, l_m_max, axion_geometric_mass, BH_geometric_mass, merger_timescale)
 
 
-TEN_BILLION_YEARS_IN_SECONDS = (10 * units.Gyr).to(units.s).value
-M_SOL_TO_GEOMETRIC = (consts.G  * consts.M_sun / consts.c**3).to(units.s).value
-EV_TO_GEOMETRIC = (1 * units.eV / consts.hbar).to(units.Hz).value
+TEN_BILLION_YEARS_IN_SECONDS = (10 * units.Gyr).to(units.s).value # type: ignore
+M_SOL_TO_GEOMETRIC = (consts.G  * consts.M_sun / consts.c**3).to(units.s).value # type: ignore
+EV_TO_GEOMETRIC = (1 * units.eV / consts.hbar).to(units.Hz).value # type: ignore
 
 def calculate_everything(BH_mass_M_sol, axion_mass_eV, initial_BH_spin, merger_timescale):
     if not (0 <= initial_BH_spin <= 1):
