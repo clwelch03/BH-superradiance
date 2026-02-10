@@ -1,5 +1,6 @@
 import numpy as np 
 import scipy.optimize as optim 
+import scipy.special
 import astropy.constants as consts
 import astropy.units as units
 import math 
@@ -21,11 +22,6 @@ def superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_ma
     Returns:
         float: The calculated rate of instability.
     """
-    # Sometimes the optimizer will try a spin value outside the [0, 1] range
-    if BH_dimensionless_spin < 0 or BH_dimensionless_spin > 1:
-        # warnings.warn("Dimensionless spin parameter took on the invalid value {}. Clamped to valid range.".format(BH_dimensionless_spin))
-        BH_dimensionless_spin = np.clip(BH_dimensionless_spin, 0, 1)
-
     # Define the outer horizon radius $r_+$
     outer_horizon_radius = BH_geometric_mass * (1 + np.sqrt(1 - BH_dimensionless_spin**2))
     
@@ -34,8 +30,8 @@ def superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_ma
                         * (m * BH_dimensionless_spin - 2 * axion_geometric_mass * outer_horizon_radius)
     
     # Second line of equation (1)
-    combinatorics = (2**(4*l+2) * math.factorial(2*l + 1 + n)) / ((l + 1 + n)**(2*l+4) * math.factorial(n)) \
-                        * (math.factorial(l) / (math.factorial(2*l) * math.factorial(2*l + 1)))**2
+    combinatorics = (2**(4*l+2) * scipy.special.factorial(2*l + 1 + n)) / ((l + 1 + n)**(2*l+4) * scipy.special.factorial(n)) \
+                        * (scipy.special.factorial(l) / (scipy.special.factorial(2*l) * scipy.special.factorial(2*l + 1)))**2
     
     # Third line of equation (1)
     k_values = np.arange(1, l+1)
@@ -134,9 +130,27 @@ def final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merg
     return critical_spin(0, l_m_max, l_m_max, axion_geometric_mass, BH_geometric_mass, merger_timescale)
 
 
+_final_BH_spin_vec = np.vectorize(final_BH_spin, otypes=[float])
+def final_BH_spin_vec(axion_geometric_mass, BH_geometric_masses, initial_BH_spins, merger_timescale):
+    """
+    Calcluates the final spin of the black hole post-merger, assuming superradiance occurs. Vectorized for enhanced performance.
+
+    Args:
+        axion_geometric_mass (float): The axion mass, expressed as its Compton frequency m_eV/hbar. 
+        BH_geometric_masses (np.array(float)): The black hole masses, expressed in units of time G*M_BH/c^3.
+        initial_BH_spins (np.array(float)): The initial BH spins, expressed as a dimensionless constant chi between 0 and 1.
+        merger_timescale (float): The timescale on which the two black holes merge, in seconds.
+
+    Returns:
+        float: The final dimensionless spins of the black hole.
+    """
+    return _final_BH_spin_vec(axion_geometric_mass, BH_geometric_masses, initial_BH_spins, merger_timescale)
+
 TEN_BILLION_YEARS_IN_SECONDS = (10 * units.Gyr).to(units.s).value # type: ignore
 M_SOL_TO_GEOMETRIC = (consts.G  * consts.M_sun / consts.c**3).to(units.s).value # type: ignore
 EV_TO_GEOMETRIC = (1 * units.eV / consts.hbar).to(units.Hz).value # type: ignore
+
+# print(final_BH_spin_vec(1e-12 * EV_TO_GEOMETRIC, 5*M_SOL_TO_GEOMETRIC, 0.7, TEN_BILLION_YEARS_IN_SECONDS))
 
 def calculate_everything(BH_mass_M_sol, axion_mass_eV, initial_BH_spin, merger_timescale):
     if not (0 <= initial_BH_spin <= 1):
