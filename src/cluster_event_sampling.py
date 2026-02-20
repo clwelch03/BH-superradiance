@@ -44,7 +44,7 @@ for filepath in h5_files:
             # Fit Beta distribution for spin magnitude
             a_fit, b_fit, _, _ = beta.fit(spin_magnitude, floc=0, fscale=1)
             
-            # Get median mass (or fit a Gaussian if your pipeline requires it)
+            # Get median mass
             median_mass = np.median(mass_1_source)
             
             print(f"[{event_name}] Mass: {median_mass:.1f} M_sol | Spin Beta(alpha={a_fit:.2f}, beta={b_fit:.2f})")
@@ -61,18 +61,18 @@ for filepath in h5_files:
 
 print(f"\nSuccessfully prepped {len(catalog_data)} events for the superradiance pipeline!")
 
-# Save beta parameters
-serializable_catalog = []
-for entry in catalog_data:
-    serializable_catalog.append({
-        'event': str(entry['event']),
-        'mass_1_median': float(entry['mass_1_median']),
-        'spin_alpha': float(entry['spin_alpha']),
-        'spin_beta': float(entry['spin_beta'])
-    })
+# # Save beta parameters
+# serializable_catalog = []
+# for entry in catalog_data:
+#     serializable_catalog.append({
+#         'event': str(entry['event']),
+#         'mass_1_median': float(entry['mass_1_median']),
+#         'spin_alpha': float(entry['spin_alpha']),
+#         'spin_beta': float(entry['spin_beta'])
+#     })
 
-with open('catalog_metadata.json', 'w') as f:
-    json.dump(serializable_catalog, f, indent=4)
+# with open('catalog_metadata.json', 'w') as f:
+#     json.dump(serializable_catalog, f, indent=4)
 
 # --- Run sampler --- #
 
@@ -87,7 +87,7 @@ priors['axion_mass'] = bilby.core.prior.LogUniform(
 )
 
 # Ensure directories exist (with no race conditions)
-for directory in ['outdir_individuals, outdir_joint']:
+for directory in ['outdir_individuals', 'outdir_joint']:
     if not os.path.exists(directory):
         os.makedirs(directory)
 
@@ -107,7 +107,7 @@ for i, single_event in enumerate(catalog_data):
         priors=priors,
         sampler='dynesty',
         nlive=500, # Adjust based on how fast/accurate you need it
-        npool=16,
+        npool=128,
         outdir='outdir_individuals',
         overwrite=True, # 
         label=f'{event_name}_run'
