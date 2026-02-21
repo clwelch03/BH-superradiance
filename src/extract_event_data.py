@@ -1,7 +1,3 @@
-import superradiance as sr
-import spin_catalog as sc
-
-import sys
 import os
 import glob
 import h5py
@@ -9,7 +5,6 @@ import numpy as np
 from scipy.stats import beta
 
 import bilby
-
 import json
 
 # --- Set up the catalog -- #
