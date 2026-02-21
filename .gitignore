@@ -27,5 +27,10 @@ Thumbs.db
 # Orion's notebook
 signal_inj_test_notebook.ipynb
 
-gwtc3_pe_samples
-outdirs
+# All Bilby outputs besides the necessary json files
+*checkpoint_run.png
+*checkpoint_stats.png
+*checkpoint_trace_unit.png
+*checkpoint_trace.png
+*run_dynesty.pickle
+*run_resume.pickle
