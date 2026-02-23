@@ -34,3 +34,4 @@ signal_inj_test_notebook.ipynb
 *checkpoint_trace.png
 *run_dynesty.pickle
 *run_resume.pickle
+*.out
