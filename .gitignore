@@ -32,3 +32,5 @@ gwtc3_pe_samples
 outdirs
 
 /src/analyses/*
+
+*.pkl

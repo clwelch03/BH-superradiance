@@ -1,12 +1,15 @@
 from __future__ import annotations
-from typing import Tuple
+from typing import Tuple, Dict
 from gwpopulation.models.redshift import PowerLawRedshift
 from bilby.core.result import read_in_result
 from scipy.interpolate import interp1d
 import numpy as np
 import matplotlib.pyplot as plt
 import h5py
+from astropy.cosmology import Planck15 as cosmo
+import astropy.units as u
 
+rng=np.random.default_rng(0)
 
 def bounds_to_edges(min_val: float, max_val: float, n_centers: int) -> np.ndarray:
     """
@@ -51,8 +54,6 @@ def sample_from_2D_ppd(h5_path: str,
 	Returns:
 		Tuple[np.ndarray, np.ndarray]: x, y arrays of shape (num_samples,)
 	"""
-
-	rng = np.random.default_rng() 
 
 	# Load PPD and get its shape
 	with h5py.File(h5_path, "r") as file:
@@ -110,3 +111,133 @@ def sample_from_2D_ppd(h5_path: str,
 	y_samples = np.clip(y_samples, y_edges[0], y_edges[-1])
 	return x_samples, y_samples
 
+
+def sample_redshift(num_samples: int, rate_evolution_index: float, max_redshift: float=2.0, redshift_grid_size: int=20000) -> np.ndarray:
+	"""
+	Sample redshifts z from the gwpopulation PowerLawRedshift model via inverse-CDF sampling.
+
+	The model corresponds to an astrophysical merger-rate density evolving as
+		R(z) ∝ (1+z)^{rate_evolution_index}
+	and includes the standard factors dVc/dz and 1/(1+z).
+
+	Args:
+		num_samples (int): Number of redshift samples to draw.
+		rate_evolution_index (float): The power-law index (often called 'lamb' in gwpopulation).
+		z_max (float, optional): Maximum redshift. Defaults to .
+		redshift_grid_size (int, optional): Size of sampling grid. Defaults to 20000.
+
+	Returns:
+		np.ndarray: Array of sampled redshifts.
+	"""
+	redshift_model = PowerLawRedshift(z_max=max_redshift)
+
+	redshift_grid = np.linspace(0.0, max_redshift, redshift_grid_size)
+	redshift_grid[0] = 1e-8  # avoid exactly 0, just in case anything weird happens
+
+	dataset = {"redshift": redshift_grid}
+
+	# Get normalized probability density on the grid
+	pdf = redshift_model.probability(dataset=dataset, lamb=rate_evolution_index)
+	pdf = np.clip(np.nan_to_num(pdf, nan=0.0, posinf=0.0, neginf=0.0), 0.0, np.inf)
+
+	# Build a CDF with proper integration over z
+	redshift_bin_widths = np.gradient(redshift_grid)
+	cdf = np.cumsum(pdf * redshift_bin_widths)
+	cdf /= cdf[-1]
+
+	uniform_draws = rng.random(num_samples)
+	return np.interp(uniform_draws, cdf, redshift_grid)
+
+
+def chirp_mass_from_mass_1_and_ratio(mass_1: float, mass_ratio: float) -> float:
+	mass_2 = mass_1 * mass_ratio
+	return (mass_1 * mass_2) ** (3.0 / 5.0) / (mass_1 + mass_2) ** (1.0 / 5.0)
+
+def masses_from_chirp_mass_and_mass_ratio(chirp_mass: np.ndarray, mass_ratio: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    # m1 = Mc * (1+q)^(1/5) / q^(3/5), m2 = q*m1
+    mass_1 = chirp_mass * (1.0 + mass_ratio) ** (1.0 / 5.0) / np.maximum(mass_ratio, 1e-12) ** (3.0 / 5.0)
+    mass_2 = mass_ratio * mass_1
+    return mass_1, mass_2
+
+
+# def simulate_mass_measurement_posterior(
+#     true_mass_1: float,
+#     true_mass_ratio: float,
+#     num_posterior_samples: int = 4000,
+#     chirp_mass_fractional_sigma: float = 0.03,     # ~3% in Mc (toy)
+#     mass_ratio_sigma: float = 0.08,                # absolute sigma in q (toy)
+#     mc_q_correlation: float = -0.6,
+#     mass_1_bounds: Tuple[float, float] = (2.0, 100.0),
+#     mass_ratio_bounds: Tuple[float, float] = (0.1, 1.0),
+#     random_number_generator: np.random.Generator | None = None,
+# ) -> Dict[str, np.ndarray]:
+# 	return
+
+
+def draw_extrinsics(geocenter_time: float) -> Dict[str, float]:
+	"""
+	Randomly generate extrinsic parameters for a merger event.
+
+	Args:
+		geocenter_time (_type_): GPS time of the merger.
+
+	Returns:
+		dict: Extrinsic parameters [right ascension,
+							declination,
+							inclination,
+							polarization,
+							phase_angle,
+							geocenter_time]
+	"""
+	return dict(
+		right_ascension=rng.uniform(0, 2*np.pi),
+		declination=np.arcsin(rng.uniform(-1, 1)),
+		inclination=np.arccos(rng.uniform(-1, 1)),
+		polarization=rng.uniform(0, np.pi),
+		phase_angle=rng.uniform(0, 2*np.pi),
+		geocenter_time=geocenter_time,
+	)
+
+
+def build_injection_from_mc(mass_1_source,
+							mass_ratio,
+							spin_magnitude_1, 
+							pin_magnitude_2,
+                            geocenter_time=1126259462.4,
+                            z=None):
+    mass_2_source = mass_ratio * mass_1_source
+
+    # enforce basic physical bounds we will also use in priors
+    if mass_1_source < 2 or mass_1_source > 100:
+        return None
+    if mass_2_source < 2 or mass_2_source > mass_1_source:
+        return None
+
+    # choose redshift+distance (or just choose distance directly)
+    if z is None:
+        z = rng.uniform(0.0, 1.0)  # placeholder; replace with your redshift model
+    dL = cosmo.luminosity_distance(z).to(u.Mpc).value
+
+    # source -> detector frame
+    m1_det = mass_1_source * (1 + z)
+    m2_det = mass_2_source * (1 + z)
+
+    # isotropic spin directions (needed for generic-precessing models)
+    tilt_1 = np.arccos(rng.uniform(-1, 1))
+    tilt_2 = np.arccos(rng.uniform(-1, 1))
+    phi_12 = rng.uniform(0, 2*np.pi)
+    phi_jl = rng.uniform(0, 2*np.pi)
+
+    inj = dict(
+        mass_1=m1_det,
+        mass_2=m2_det,
+        a_1=float(spin_magnitude_1),
+        a_2=float(spin_magnitude_2),
+        tilt_1=float(tilt_1),
+        tilt_2=float(tilt_2),
+        phi_12=float(phi_12),
+        phi_jl=float(phi_jl),
+        luminosity_distance=float(dL),
+        **draw_extrinsics(rng, geocent_time),
+    )
+    return inj
