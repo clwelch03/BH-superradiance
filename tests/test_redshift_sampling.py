@@ -42,6 +42,7 @@ def test_redshift_sampling_histogram_overlay(tmp_path):
     fig.tight_layout()
     fig.savefig(tmp_path / "redshift_sampling_overlay.png", dpi=150)
     plt.close(fig)
+    
 
 def test_redshift_sampling_reproducible_given_seed():
     seed = 999
