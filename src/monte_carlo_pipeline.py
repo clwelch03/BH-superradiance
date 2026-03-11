@@ -2,9 +2,7 @@ from __future__ import annotations
 from typing import Tuple, Dict
 from gwpopulation.models.redshift import PowerLawRedshift
 from bilby.core.result import read_in_result
-from scipy.interpolate import interp1d
 import numpy as np
-import matplotlib.pyplot as plt
 import h5py
 from astropy.cosmology import Planck15 as cosmo
 import astropy.units as u
@@ -37,7 +35,8 @@ def bounds_to_edges(min_val: float, max_val: float, n_centers: int) -> np.ndarra
 def sample_from_2D_ppd(h5_path: str,
                        num_samples: int,
                        x_bounds: Tuple[float, float],
-                       y_bounds: Tuple[float, float]) -> Tuple[np.ndarray, np.ndarray]:
+                       y_bounds: Tuple[float, float],
+					   rng: np.random.Generator | None = None) -> Tuple[np.ndarray, np.ndarray]:
 	"""
 	Sample x, y from a 2D density stored as an HDF5 dataset.
 	
@@ -54,6 +53,7 @@ def sample_from_2D_ppd(h5_path: str,
 	Returns:
 		Tuple[np.ndarray, np.ndarray]: x, y arrays of shape (num_samples,)
 	"""
+	rng = np.random.default_rng() if rng is None else rng
 
 	# Load PPD and get its shape
 	with h5py.File(h5_path, "r") as file:
@@ -112,7 +112,14 @@ def sample_from_2D_ppd(h5_path: str,
 	return x_samples, y_samples
 
 
-def sample_redshift(num_samples: int, rate_evolution_index: float, max_redshift: float=2.0, redshift_grid_size: int=20000) -> np.ndarray:
+
+def sample_redshifts(
+	num_samples: int,
+	rate_evolution_index: float,
+	max_redshift: float = 2.0,
+	redshift_grid_size: int = 20000,
+	rng: np.random.Generator | None = None,
+) -> np.ndarray:
 	"""
 	Sample redshifts z from the gwpopulation PowerLawRedshift model via inverse-CDF sampling.
 
@@ -123,30 +130,155 @@ def sample_redshift(num_samples: int, rate_evolution_index: float, max_redshift:
 	Args:
 		num_samples (int): Number of redshift samples to draw.
 		rate_evolution_index (float): The power-law index (often called 'lamb' in gwpopulation).
-		z_max (float, optional): Maximum redshift. Defaults to .
+		max_redshift (float, optional): Maximum redshift. Defaults to 2.0.
 		redshift_grid_size (int, optional): Size of sampling grid. Defaults to 20000.
+		rng (np.random.Generator | None, optional): RNG for reproducibility. Defaults to None.
 
 	Returns:
 		np.ndarray: Array of sampled redshifts.
+
+	Raises:
+		ValueError: If inputs are invalid or the PDF cannot be normalized.
 	"""
+	if num_samples < 0:
+		raise ValueError("num_samples must be >= 0")
+	if max_redshift <= 0:
+		raise ValueError("max_redshift must be > 0")
+	if redshift_grid_size < 2:
+		raise ValueError("redshift_grid_size must be >= 2")
+	if not np.isfinite(rate_evolution_index):
+		raise ValueError("rate_evolution_index must be finite")
+
+	rng = np.random.default_rng() if rng is None else rng
+	if num_samples == 0:
+		return np.empty(0, dtype=float)
+
 	redshift_model = PowerLawRedshift(z_max=max_redshift)
 
-	redshift_grid = np.linspace(0.0, max_redshift, redshift_grid_size)
+	redshift_grid = np.linspace(0.0, max_redshift, int(redshift_grid_size), dtype=float)
 	redshift_grid[0] = 1e-8  # avoid exactly 0, just in case anything weird happens
 
 	dataset = {"redshift": redshift_grid}
 
-	# Get normalized probability density on the grid
-	pdf = redshift_model.probability(dataset=dataset, lamb=rate_evolution_index)
-	pdf = np.clip(np.nan_to_num(pdf, nan=0.0, posinf=0.0, neginf=0.0), 0.0, np.inf)
+	# Get probability density on the grid
+	pdf = redshift_model.probability(dataset=dataset, lamb=float(rate_evolution_index))
+	pdf = np.asarray(pdf, dtype=float)
 
-	# Build a CDF with proper integration over z
-	redshift_bin_widths = np.gradient(redshift_grid)
-	cdf = np.cumsum(pdf * redshift_bin_widths)
-	cdf /= cdf[-1]
+	# Defensive cleaning: remove NaNs/infs and forbid negative density
+	pdf = np.nan_to_num(pdf, nan=0.0, posinf=0.0, neginf=0.0)
+	pdf = np.clip(pdf, 0.0, np.inf)
+
+	# Build CDF using cumulative trapezoidal integration (stable and accurate on a grid)
+	dz = np.diff(redshift_grid)
+	cdf = np.empty_like(redshift_grid)
+	cdf[0] = 0.0
+	cdf[1:] = np.cumsum(0.5 * (pdf[1:] + pdf[:-1]) * dz)
+
+	total = cdf[-1]
+	if not np.isfinite(total) or total <= 0.0:
+		raise ValueError("Redshift PDF could not be normalized; integral is non-positive.")
+
+	cdf /= total
+	cdf = np.clip(cdf, 0.0, 1.0)
+
+	# Ensure a valid inverse-CDF mapping: np.interp requires strictly increasing xp
+	# (flat regions can happen if pdf==0 over an interval).
+	cdf, unique_idx = np.unique(cdf, return_index=True)
+	redshift_grid = redshift_grid[unique_idx]
+
+	# If everything collapsed (pathological), fail explicitly.
+	if cdf.size < 2:
+		raise ValueError("CDF is degenerate; cannot sample redshifts from this configuration.")
 
 	uniform_draws = rng.random(num_samples)
 	return np.interp(uniform_draws, cdf, redshift_grid)
+
+
+# The following code handles sampling redshift values from an existing Bilby result #
+def load_lambda_samples(result_path: str) -> np.ndarray:
+	"""
+	Load posterior samples of the redshift-evolution index ('lamb') from a Bilby result file.
+
+	Args:
+		result_path (str): Path to a Bilby result file (e.g., .json).
+
+	Returns:
+		np.ndarray: 1D array of posterior samples for 'lamb'.
+
+	Raises:
+		FileNotFoundError: If the result file cannot be found/read.
+		KeyError: If the 'lamb' parameter is not present in the result posterior.
+		ValueError: If no finite samples are available.
+	"""
+	pop_result = read_in_result(result_path)
+
+	if "lamb" not in pop_result.posterior:
+		raise KeyError(f"'lamb' not found in result posterior. Available keys: {list(pop_result.posterior.columns)}")
+
+	lambda_samples = np.asarray(pop_result.posterior["lamb"].to_numpy()).reshape(-1)
+	lambda_samples = lambda_samples[np.isfinite(lambda_samples)]
+
+	if lambda_samples.size == 0:
+		raise ValueError("No finite 'lamb' samples found in result posterior.")
+
+	return lambda_samples
+
+
+def draw_lambda(lambda_samples: np.ndarray, rng: np.random.Generator | None = None) -> float:
+	"""
+	Pick a rate evolution index lambda given an array of samples.
+
+	Args:
+		lambda_samples (np.ndarray): Array of samples.
+		rng (np.random.Generator): Random number generator used for selection.
+
+	Returns:
+		float: Randomly selected rate evolution index.
+
+	Raises:
+		ValueError: If lambda_samples is empty or contains no finite values.
+	"""
+	rng = np.random.default_rng() if rng is None else rng
+
+	lambda_samples = np.asarray(lambda_samples).reshape(-1)
+	lambda_samples = lambda_samples[np.isfinite(lambda_samples)]
+
+	if lambda_samples.size == 0:
+		raise ValueError("lambda_samples is empty or contains no finite values.")
+
+	return float(rng.choice(lambda_samples))
+
+
+#src/analyses/PowerLawPeak/o1o2o3_mass_c_iid_mag_iid_tilt_powerlaw_redshift_result.json
+
+def sample_redshifts_from_result(result_path: str,
+								num_samples: int,
+								max_redshift: float = 2.0,
+								redshift_grid_size: int = 20000,
+								rng: np.random.Generator | None = None) -> np.ndarray:
+	"""
+	Sample redshift values from a result file.
+
+	Args:
+		result_path (str): Path to file containing redshift results
+		num_samples (int): Number of samples desired
+		max_redshift (float, optional): Maximum redshift. Defaults to 2.0.
+		redshift_grid_size (int, optional): Size of sampling grid. Defaults to 20000.
+		rng (np.random.Generator | None, optional): RNG for reproducibility. Defaults to None.
+
+	Returns:
+		np.ndarray: Array of sampled redshifts.
+	"""
+	rng = np.random.default_rng() if rng is None else rng
+	lambda_samples = load_lambda_samples(result_path)
+	lamb = draw_lambda(lambda_samples, rng)
+	return sample_redshifts(
+		num_samples=num_samples,
+		rate_evolution_index=lamb,
+		max_redshift=max_redshift,
+		redshift_grid_size=redshift_grid_size,
+		rng=rng,
+	)
 
 
 def chirp_mass_from_mass_1_and_ratio(mass_1: float, mass_ratio: float) -> float:
@@ -190,54 +322,66 @@ def draw_extrinsics(geocenter_time: float) -> Dict[str, float]:
 							geocenter_time]
 	"""
 	return dict(
-		right_ascension=rng.uniform(0, 2*np.pi),
-		declination=np.arcsin(rng.uniform(-1, 1)),
-		inclination=np.arccos(rng.uniform(-1, 1)),
-		polarization=rng.uniform(0, np.pi),
-		phase_angle=rng.uniform(0, 2*np.pi),
-		geocenter_time=geocenter_time,
-	)
+        ra=rng.uniform(0, 2*np.pi),
+        dec=np.arcsin(rng.uniform(-1, 1)),
+        theta_jn=np.arccos(rng.uniform(-1, 1)),
+        psi=rng.uniform(0, np.pi),
+        phase=rng.uniform(0, 2*np.pi),
+        geocent_time=geocenter_time,
+    )
 
 
 def build_injection_from_mc(mass_1_source,
 							mass_ratio,
 							spin_magnitude_1, 
-							pin_magnitude_2,
-                            geocenter_time=1126259462.4,
-                            z=None):
-    mass_2_source = mass_ratio * mass_1_source
+							spin_magnitude_2,
+							redshift,
+                            geocenter_time=1126259462.4):
+	"""_summary_
 
-    # enforce basic physical bounds we will also use in priors
-    if mass_1_source < 2 or mass_1_source > 100:
-        return None
-    if mass_2_source < 2 or mass_2_source > mass_1_source:
-        return None
+	Args:
+		mass_1_source (_type_): _description_
+		mass_ratio (_type_): _description_
+		spin_magnitude_1 (_type_): _description_
+		spin_magnitude_2 (_type_): _description_
+		redshift (_type_): _description_
+		geocenter_time (float, optional): _description_. Defaults to 1126259462.4.
 
-    # choose redshift+distance (or just choose distance directly)
-    if z is None:
-        z = rng.uniform(0.0, 1.0)  # placeholder; replace with your redshift model
-    dL = cosmo.luminosity_distance(z).to(u.Mpc).value
+	Returns:
+		_type_: _description_
+	"""
+	mass_2_source = mass_ratio * mass_1_source
 
-    # source -> detector frame
-    m1_det = mass_1_source * (1 + z)
-    m2_det = mass_2_source * (1 + z)
+	# enforce basic physical bounds we will also use in priors
+	if mass_1_source < 2 or mass_1_source > 100:
+		return None
+	if mass_2_source < 2 or mass_2_source > mass_1_source:
+		return None
 
-    # isotropic spin directions (needed for generic-precessing models)
-    tilt_1 = np.arccos(rng.uniform(-1, 1))
-    tilt_2 = np.arccos(rng.uniform(-1, 1))
-    phi_12 = rng.uniform(0, 2*np.pi)
-    phi_jl = rng.uniform(0, 2*np.pi)
+	# choose redshift+distance (or just choose distance directly)
+	dL = cosmo.luminosity_distance(redshift).to(u.Mpc).value # type: ignore
 
-    inj = dict(
-        mass_1=m1_det,
-        mass_2=m2_det,
-        a_1=float(spin_magnitude_1),
-        a_2=float(spin_magnitude_2),
-        tilt_1=float(tilt_1),
-        tilt_2=float(tilt_2),
-        phi_12=float(phi_12),
-        phi_jl=float(phi_jl),
-        luminosity_distance=float(dL),
-        **draw_extrinsics(rng, geocent_time),
-    )
-    return inj
+	# source -> detector frame
+	#TODO: do we need to do this????
+	m1_det = mass_1_source * (1 + redshift)
+	m2_det = mass_2_source * (1 + redshift)
+
+	# isotropic spin directions (needed for generic-precessing models)
+	tilt_1 = np.arccos(rng.uniform(-1, 1))
+	tilt_2 = np.arccos(rng.uniform(-1, 1))
+	phi_12 = rng.uniform(0, 2*np.pi)
+	phi_jl = rng.uniform(0, 2*np.pi)
+
+	inj = dict(
+		mass_1=m1_det,
+		mass_2=m2_det,
+		a_1=float(spin_magnitude_1),
+		a_2=float(spin_magnitude_2),
+		tilt_1=float(tilt_1),
+		tilt_2=float(tilt_2),
+		phi_12=float(phi_12),
+		phi_jl=float(phi_jl),
+		luminosity_distance=float(dL),
+		**draw_extrinsics(geocenter_time),
+	)
+	return inj
