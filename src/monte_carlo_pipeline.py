@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 from gwpopulation.models.redshift import PowerLawRedshift
 from bilby.core.result import read_in_result
 import numpy as np
@@ -411,3 +411,89 @@ def build_injection_from_mc(mass_1_source: float,
 		**draw_extrinsics(geocent_time, rng)
 	)
 	return inj
+
+
+Injection = Dict[str, float]
+Bounds = Tuple[float, float]
+
+def generate_injection_catalog(
+	n_events: int,
+	mass_ppd_path: str,
+	spin_ppd_path: str,
+	bilby_result_path_for_lambda: str,
+	m1_bounds: Bounds = (2.0, 100.0),
+	q_bounds: Bounds = (0.1, 1.0),
+	a_bounds: Bounds = (0.0, 1.0),
+	z_max: float = 2.0,
+	time0: float = 1126259462.4,
+	dt: float = 10.0,
+	rng: np.random.Generator | None = None,
+) -> Tuple[List[Injection], float]:
+	"""
+	Generate a Monte Carlo catalog of bilby-compatible injection dictionaries.
+
+	This function performs the "population-level" Monte Carlo:
+		1) Draw a redshift-evolution index (lambda) from a Bilby population result posterior
+		2) Sample (m1_source, q) from a 2D PPD grid stored in an HDF5 file
+		3) Sample (a1, a2) from a 2D PPD grid stored in an HDF5 file
+		4) Sample redshifts z from a PowerLawRedshift model conditioned on lambda
+		5) Convert each draw into an injection dictionary via build_injection_from_mc
+
+	Note:
+		This draws ONE lambda for the entire catalog. If you want to marginalize
+		over lambda per-event, draw lambda inside the loop.
+
+	Args:
+		n_events (int): Number of injections to generate.
+		mass_ppd_path (str): Path to HDF5 file containing a 2D PPD for (m1_source, q).
+		spin_ppd_path (str): Path to HDF5 file containing a 2D PPD for (a1, a2).
+		bilby_result_path_for_lambda (str): Path to a Bilby result file containing posterior samples of 'lamb'.
+		m1_bounds (Tuple[float, float], optional): Bounds for m1_source used to interpret the mass PPD grid. Defaults to (2.0, 100.0).
+		q_bounds (Tuple[float, float], optional): Bounds for mass ratio q used to interpret the mass PPD grid. Defaults to (0.1, 1.0).
+		a_bounds (Tuple[float, float], optional): Bounds for spin magnitudes used to interpret the spin PPD grid. Defaults to (0.0, 1.0).
+		z_max (float, optional): Maximum redshift for redshift sampling. Defaults to 2.0.
+		time0 (float, optional): Reference geocent_time (GPS seconds) for the first injection. Defaults to 1126259462.4.
+		dt (float, optional): Time spacing (seconds) between consecutive injections. Defaults to 10.0.
+		rng (np.random.Generator | None, optional): RNG for reproducibility. Defaults to None.
+
+	Returns:
+		Tuple[List[Dict[str, float]], float]:
+			- injections: List of bilby-compatible injection dictionaries (length n_events)
+			- lamb: The lambda value used to sample all redshifts in this catalog
+
+	Raises:
+		ValueError: If n_events is negative, or if z_max/dt are not positive finite values.
+		KeyError / FileNotFoundError / ValueError: If the lambda posterior cannot be loaded.
+		Any exception raised by sample_from_2D_ppd(), sample_redshifts(), draw_lambda(),
+		or build_injection_from_mc() will propagate.
+	"""
+	rng = np.random.default_rng() if rng is None else rng
+
+	# Draw one lambda for the whole catalog for now
+	#TODO: marginalize over lambda?
+	lambda_samples = load_lambda_samples(bilby_result_path_for_lambda)
+	lamb = draw_lambda(lambda_samples, rng=rng)
+
+	# Draw intrinsic parameters from your PPDs
+	mass_1_source, mass_ratios = sample_from_2D_ppd(mass_ppd_path, n_events, x_bounds=m1_bounds, y_bounds=q_bounds)
+	spin_magnitudes_1, spin_magnitudes_2 = sample_from_2D_ppd(spin_ppd_path, n_events, x_bounds=a_bounds, y_bounds=a_bounds)
+
+	# Draw redshifts conditional on lambda
+	redshifts = sample_redshifts(n_events, rate_evolution_index=lamb, max_redshift=z_max, rng=rng)
+
+	# Build bilby-compatible injection dicts
+	injections = []
+	for i in range(n_events):
+		geocent_time = time0 + i * dt
+		inj = build_injection_from_mc(
+			mass_1_source=float(mass_1_source[i]),
+			mass_ratio=float(mass_ratios[i]),
+			spin_magnitude_1=float(spin_magnitudes_1[i]),
+			spin_magnitude_2=float(spin_magnitudes_2[i]),
+			redshift=float(redshifts[i]),
+			geocent_time=geocent_time,
+			rng=rng,
+		)
+		injections.append(inj)
+
+	return injections, lamb
