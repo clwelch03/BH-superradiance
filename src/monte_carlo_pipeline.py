@@ -7,8 +7,6 @@ import h5py
 from astropy.cosmology import Planck15 as cosmo
 import astropy.units as u
 
-rng=np.random.default_rng(0)
-
 def bounds_to_edges(min_val: float, max_val: float, n_centers: int) -> np.ndarray:
     """
 	Convert bounds and a length to an array of grid edges in a dimension.
