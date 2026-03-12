@@ -108,7 +108,7 @@ def build_injection_from_mc(mass_1_source: float,
 	phi_12 = rng.uniform(0, 2*np.pi)
 	phi_jl = rng.uniform(0, 2*np.pi)
 
-	inj = dict(
+	injection = dict(
 		mass_1=mass_1_det,
 		mass_2=mass_2_det,
 		a_1=float(spin_magnitude_1),
@@ -120,7 +120,7 @@ def build_injection_from_mc(mass_1_source: float,
 		luminosity_distance=float(dL),
 		**draw_extrinsics(geocent_time, rng)
 	)
-	return inj
+	return injection
 
 def generate_injection_catalog(n_events: int,
 							   mass_ppd_path: str,
@@ -134,7 +134,8 @@ def generate_injection_catalog(n_events: int,
 							   time0: float = 1126259462.4,
 							   dt: float = 10.0,
 							   snr_threshold: float = 10.0,
-							   rng: np.random.Generator | None = None) -> Tuple[List[Injection], List[float], float]:
+							   rng: np.random.Generator | None = None,
+							   verbose: bool = False) -> Tuple[List[Injection], List[float], float]:
 	"""
 	Generate a Monte Carlo catalog of bilby-compatible injection dictionaries.
 
@@ -163,6 +164,10 @@ def generate_injection_catalog(n_events: int,
 		dt (float, optional): Time spacing (seconds) between consecutive injections. Defaults to 10.0.
 		snr_threshold (float, optional): Signal-to-noise ratio threshold; all injections will be above this.
 		rng (np.random.Generator | None, optional): RNG for reproducibility.
+		verbose (bool): Toggle for extra debug output. Defaults to False.
+
+	Raises:
+		RuntimeError: If the SNR cut is too high (or the max redshift is too high) to generate events that meet our criteria.
 
 	Returns:
 		Tuple[List[Injection], List[float], float]:
@@ -172,45 +177,66 @@ def generate_injection_catalog(n_events: int,
 	"""
 	# Instantiate rng if not passed
 	rng = np.random.default_rng() if rng is None else rng
-
-	# Draw intrinsic parameters from your PPDs
-	mass_1_source, mass_ratios = sample_from_2D_ppd(mass_ppd_path, n_events, x_bounds=m1_bounds, y_bounds=q_bounds)
-	spin_magnitudes_1, spin_magnitudes_2 = sample_from_2D_ppd(spin_ppd_path, n_events, x_bounds=a_bounds, y_bounds=a_bounds)
-
-	# Draw redshifts conditional on lambda
-	# Draw one lambda for the whole catalog for now
-	#TODO: marginalize over lambda?
-	redshifts, lamb = sample_redshifts_from_result(bilby_result_path_for_lambda, n_events, max_redshift=z_max, rng=rng)
-
-	# Build bilby-compatible injection dicts
-	injections = []
-	snrs = []
-
+	
 	# Build GWContext from provided GW settings
 	gw_context = GWContext(gw_context_settings)
 
-	for i in range(n_events):
-		success = False # we repeat until we generate a high-SNR event
-		geocent_time = time0 + i * dt
-		while not success:
-			# build a candidate injection
-			inj = build_injection_from_mc(
-				mass_1_source=float(mass_1_source[i]),
-				mass_ratio=float(mass_ratios[i]),
-				spin_magnitude_1=float(spin_magnitudes_1[i]),
-				spin_magnitude_2=float(spin_magnitudes_2[i]),
-				redshift=float(redshifts[i]),
-				geocent_time=geocent_time,
-				rng=rng,
-			)
+	# Calculate the maximum allowed draws based on n_events
+	max_draws = 100*n_events
 
-			# calculate snr for the injection
-			inj_snr = gw_context.network_optimal_snr(inj)
-			
-			# if the injection is above the SNR threshold, add it to the list
-			if inj_snr > snr_threshold:
-				injections.append(inj)
-				snrs.append(inj_snr)
+	# Draw a pool of candidate full draws, then reject/accept until we have n_events
+	# One lambda for the whole catalog (kept consistent because we call this once)
+	redshifts, lamb = sample_redshifts_from_result(
+		bilby_result_path_for_lambda,
+		max_draws,
+		max_redshift=z_max,
+		rng=rng,
+	)
+
+	# Candidate intrinsic parameters
+	mass_1_source, mass_ratios = sample_from_2D_ppd(mass_ppd_path, max_draws, x_bounds=m1_bounds, y_bounds=q_bounds)
+	spin_magnitudes_1, spin_magnitudes_2 = sample_from_2D_ppd(spin_ppd_path, max_draws, x_bounds=a_bounds, y_bounds=a_bounds)
+
+	# Build bilby-compatible injection dicts
+	injections: List[Injection] = []
+	snrs: List[float] = []
+
+	candidate_idx = 0
+
+	#TODO: later, we should chunk proposal pools (draw 256–1024 candidates at a time)
+	for i in range(n_events):
+		geocent_time = time0 + i * dt
+		success = False # we repeat until we generate a high-SNR event
+
+		while not success:
+			if candidate_idx >= max_draws:
+				raise RuntimeError(
+					f"Ran out of candidate draws (max_draws={max_draws}) before collecting "
+					f"{n_events} injections with SNR >= {snr_threshold}. "
+					f"Lower snr_threshold or z_max."
+				)
+
+			# Build a candidate injection
+			injection = build_injection_from_mc(
+				mass_1_source=float(mass_1_source[candidate_idx]),
+				mass_ratio=float(mass_ratios[candidate_idx]),
+				spin_magnitude_1=float(spin_magnitudes_1[candidate_idx]),
+				spin_magnitude_2=float(spin_magnitudes_2[candidate_idx]),
+				redshift=float(redshifts[candidate_idx]),
+				geocent_time=geocent_time,
+				rng=rng
+			)
+			candidate_idx += 1
+
+			# Calculate SNR for the injection candidate
+			injection_snr = gw_context.network_optimal_snr(injection)
+			if verbose:
+				print(f"Injection candidate has SNR {injection_snr}")
+
+			# If the injection is above the SNR threshold, add it to the list
+			if injection_snr > snr_threshold:
+				injections.append(injection)
+				snrs.append(injection_snr)
 				success = True
 
 	return injections, snrs, lamb

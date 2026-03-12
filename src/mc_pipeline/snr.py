@@ -63,4 +63,4 @@ class GWContext:
         for ifo in self.ifos_psd:
             h = ifo.get_detector_response(waveform_polarizations=polarizations, parameters=dict(injection))
             squared_snr += float(ifo.optimal_snr_squared(h))
-        return float(np.sqrt(squared_snr))
+        return float(np.real(np.sqrt(squared_snr)))
