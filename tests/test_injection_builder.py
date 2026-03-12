@@ -3,7 +3,7 @@ import pytest
 from astropy.cosmology import Planck15 as cosmo
 import astropy.units as u
 
-from monte_carlo_pipeline import draw_extrinsics, build_injection_from_mc
+from mc_pipeline.monte_carlo_pipeline import draw_extrinsics, build_injection_from_mc
 
 
 REQUIRED_EXTRINSIC_KEYS = {"ra", "dec", "theta_jn", "psi", "phase", "geocent_time"}

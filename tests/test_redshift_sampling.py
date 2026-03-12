@@ -4,7 +4,7 @@ matplotlib.use("Agg")  # headless backend for CI/servers
 import matplotlib.pyplot as plt
 
 from gwpopulation.models.redshift import PowerLawRedshift
-from monte_carlo_pipeline import sample_redshifts  # thanks to pytest.ini pythonpath=src
+from mc_pipeline.monte_carlo_pipeline import sample_redshifts  # thanks to pytest.ini pythonpath=src
 
 def test_redshift_sampling_histogram_overlay(tmp_path):
     rng = np.random.default_rng(123)
