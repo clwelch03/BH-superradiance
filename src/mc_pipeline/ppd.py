@@ -42,12 +42,15 @@ def sample_from_2D_ppd(h5_path: str,
 		num_samples (int): Number of samples to generate
 		x_bounds (Tuple[float, float]): (x_min, x_max)
 		y_bounds (Tuple[float, float]): (y_min, y_max)
+		rng (np.random.Generator, optional): RNG for reproducibility.
+
 
 	Returns:
 		Tuple[np.ndarray, np.ndarray]: x, y arrays of shape (num_samples,)
 	"""
+	# Instantiate rng if not passed
 	rng = np.random.default_rng() if rng is None else rng
-
+	
 	# Load PPD and get its shape
 	with h5py.File(h5_path, "r") as file:
 		ppd = file["ppd"][...] # type: ignore

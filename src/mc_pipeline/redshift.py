@@ -1,4 +1,6 @@
 import numpy as np
+from numpy.typing import NDArray
+
 from gwpopulation.models.redshift import PowerLawRedshift
 from bilby.core.result import read_in_result
 from typing import Tuple
@@ -8,7 +10,7 @@ def sample_redshifts(num_samples: int,
 					 rate_evolution_index: float,
 					 max_redshift: float = 2.0,
 					 redshift_grid_size: int = 20000,
-					 rng: np.random.Generator | None = None) -> np.ndarray:
+					 rng: np.random.Generator | None = None) -> NDArray[np.float64]:
 	"""
 	Sample redshifts z from the gwpopulation PowerLawRedshift model via inverse-CDF sampling.
 
@@ -24,7 +26,7 @@ def sample_redshifts(num_samples: int,
 		rng (np.random.Generator | None, optional): RNG for reproducibility. Defaults to None.
 
 	Returns:
-		np.ndarray: Array of sampled redshifts.
+		NDArray[np.float64]: Array of sampled redshifts.
 
 	Raises:
 		ValueError: If inputs are invalid or the PDF cannot be normalized.
@@ -38,9 +40,11 @@ def sample_redshifts(num_samples: int,
 	if not np.isfinite(rate_evolution_index):
 		raise ValueError("rate_evolution_index must be finite")
 
-	rng = np.random.default_rng() if rng is None else rng
 	if num_samples == 0:
 		return np.empty(0, dtype=float)
+
+	# Instantiate rng if not passed
+	rng = np.random.default_rng() if rng is None else rng
 
 	redshift_model = PowerLawRedshift(z_max=max_redshift)
 
@@ -71,18 +75,18 @@ def sample_redshifts(num_samples: int,
 	cdf = np.clip(cdf, 0.0, 1.0)
 
 	# Ensure a valid inverse-CDF mapping: np.interp requires strictly increasing xp
-	# (flat regions can happen if pdf==0 over an interval).
+	# (flat regions can happen if pdf==0 over an interval)
 	cdf, unique_idx = np.unique(cdf, return_index=True)
 	redshift_grid = redshift_grid[unique_idx]
 
-	# If everything collapsed (pathological), fail explicitly.
+	# If everything collapsed (pathological), fail explicitly
 	if cdf.size < 2:
 		raise ValueError("CDF is degenerate; cannot sample redshifts from this configuration.")
 
 	uniform_draws = rng.random(num_samples)
 	return np.interp(uniform_draws, cdf, redshift_grid)
 
-def load_lambda_samples(result_path: str) -> np.ndarray:
+def load_lambda_samples(result_path: str) -> NDArray[np.float64]:
 	"""
 	Load posterior samples of the redshift-evolution index ('lamb') from a Bilby result file.
 
@@ -111,7 +115,7 @@ def load_lambda_samples(result_path: str) -> np.ndarray:
 	return lambda_samples
 
 
-def draw_lambda(lambda_samples: np.ndarray, rng: np.random.Generator | None = None) -> float:
+def draw_lambda(lambda_samples: NDArray[np.float64], rng: np.random.Generator = np.random.default_rng()) -> float:
 	"""
 	Pick a rate evolution index lambda given an array of samples.
 
@@ -125,7 +129,6 @@ def draw_lambda(lambda_samples: np.ndarray, rng: np.random.Generator | None = No
 	Raises:
 		ValueError: If lambda_samples is empty or contains no finite values.
 	"""
-	rng = np.random.default_rng() if rng is None else rng
 
 	lambda_samples = np.asarray(lambda_samples).reshape(-1)
 	lambda_samples = lambda_samples[np.isfinite(lambda_samples)]
@@ -139,7 +142,7 @@ def sample_redshifts_from_result(result_path: str,
 								num_samples: int,
 								max_redshift: float = 2.0,
 								redshift_grid_size: int = 20000,
-								rng: np.random.Generator | None = None) -> Tuple[np.ndarray, float]:
+								rng: np.random.Generator | None = None) -> Tuple[NDArray[np.float64], float]:
 	"""
 	Sample redshift values from a result file.
 
@@ -148,12 +151,15 @@ def sample_redshifts_from_result(result_path: str,
 		num_samples (int): Number of samples desired
 		max_redshift (float, optional): Maximum redshift. Defaults to 2.0.
 		redshift_grid_size (int, optional): Size of sampling grid. Defaults to 20000.
-		rng (np.random.Generator | None, optional): RNG for reproducibility. Defaults to None.
+		rng (np.random.Generator | None, optional): RNG for reproducibility.
 
 	Returns:
 		np.ndarray: Array of sampled redshifts.
+		float: Sampled lambda value.
 	"""
+	# Instantiate rng if not passed
 	rng = np.random.default_rng() if rng is None else rng
+	
 	lambda_samples = load_lambda_samples(result_path)
 	lamb = draw_lambda(lambda_samples, rng)
 	return sample_redshifts(

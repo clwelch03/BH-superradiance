@@ -6,7 +6,7 @@ pytest.importorskip("astropy")
 import astropy.units as u
 from astropy.cosmology import Planck15 as cosmo
 
-from mc_pipeline.injection import draw_extrinsics, build_injection_from_mc
+from mc_pipeline.injection_builder import draw_extrinsics, build_injection_from_mc
 
 
 def test_draw_extrinsics_reproducible_and_in_ranges():
