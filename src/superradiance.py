@@ -1,26 +1,30 @@
 import numpy as np 
+from numpy.typing import NDArray
 import scipy.optimize as optim 
 import scipy.special
 import astropy.constants as consts
 import astropy.units as units
-import math 
-import warnings
 
 
-def superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_mass, BH_dimensionless_spin) -> float:
+def superradiant_instability_rate(n: int,
+                                  l: int,
+                                  m: int,
+                                  axion_geometric_mass: float,
+                                  BH_geometric_mass: float,
+                                  BH_dimensionless_spin: float) -> float:
     """
     Calculates the superradiant instability rate for a black hole. Based on Equation (1) of arxiv/1908.02312.
 
     Args:
-        n (int): The adjusted principal quantum number n-l-m.
-        l (int): The azimuthal quantum number.
-        m (int): The magnetic quantum number.
-        axion_geometric_mass (float): The axion mass, expressed as its Compton frequency m_eV/hbar. 
-        BH_geometric_mass (float): The black hole mass, expressed in units of time G*M_BH/c^3.
-        BH_dimensionless_spin (float): The BH spin, expressed as a dimensionless constant chi between 0 and 1.
+        n (int): Adjusted principal quantum number n-l-m.
+        l (int): Azimuthal quantum number.
+        m (int): Magnetic quantum number.
+        axion_geometric_mass (float): Axion mass, expressed as its Compton frequency m_eV/hbar. 
+        BH_geometric_mass (float): Black hole mass, expressed in units of time G*M_BH/c^3.
+        BH_dimensionless_spin (float): Black hole spin, expressed as a dimensionless constant chi between 0 and 1.
 
     Returns:
-        float: The calculated rate of instability.
+        float: Rate of instability.
     """
     # Define the outer horizon radius $r_+$
     outer_horizon_radius = BH_geometric_mass * (1 + np.sqrt(1 - BH_dimensionless_spin**2))
@@ -41,27 +45,45 @@ def superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_ma
     return mass_terms * combinatorics * np.prod(product_over_k)
 
 
-def superradiant_instability_timescale(n, l, m, axion_mass, BH_mass, BH_spin) -> float:
+def superradiant_instability_timescale(n: int,
+                                       l: int,
+                                       m: int,
+                                       axion_geometric_mass: float,
+                                       BH_geometric_mass: float,
+                                       BH_dimensionless_spin: float) -> float:
     """
     Calculates the characteristic timescale of superradiance -- the reciprocal of the superradiant instability rate.
 
+    Args:
+        n (int): Adjusted principal quantum number n-l-m.
+        l (int): Azimuthal quantum number.
+        m (int): Magnetic quantum number.
+        axion_geometric_mass (float): Axion mass, expressed as its Compton frequency m_eV/hbar. 
+        BH_geometric_mass (float): Black hole mass, expressed in units of time G*M_BH/c^3.
+        BH_dimensionless_spin (float): Black hole spin, expressed as a dimensionless constant chi between 0 and 1.
+
     Returns:
-        float: the instability timescale in seconds.
+        float: Instability timescale in seconds.
     """
-    return 1 / superradiant_instability_rate(n, l, m, axion_mass, BH_mass, BH_spin)
+    return 1 / superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_mass, BH_dimensionless_spin)
 
 
-def critical_spin(n, l, m, axion_geometric_mass, BH_geometric_mass, merger_timescale):
+def critical_spin(n: int,
+                    l: int,
+                    m: int,
+                    axion_geometric_mass: float,
+                    BH_geometric_mass: float,
+                    merger_timescale: float) -> float:
     """
     Calculates the spin below which the superradiant growth of the axion cloud cannot occur.
 
     Args:
-        n (int): The adjusted principal quantum number n-l-m.
-        l (int): The azimuthal quantum number.
-        m (int): The magnetic quantum number.
-        axion_geometric_mass (float): The axion mass, expressed as its Compton frequency m_eV/hbar. 
-        BH_geometric_mass (float): The black hole mass, expressed in units of time G*M_BH/c^3.
-        merger_timescale (float): The timescale on which the two black holes merge, in seconds.
+        n (int): Adjusted principal quantum number n-l-m.
+        l (int): Azimuthal quantum number.
+        m (int): Magnetic quantum number.
+        axion_geometric_mass (float): Axion mass, expressed as its Compton frequency m_eV/hbar. 
+        BH_geometric_mass (float): Black hole mass, expressed in units of time G*M_BH/c^3.
+        merger_timescale (float): Timescale on which the two black holes merge, in seconds.
 
     Returns:
         float: The critical spin for the given mode.
@@ -69,21 +91,25 @@ def critical_spin(n, l, m, axion_geometric_mass, BH_geometric_mass, merger_times
     return optim.fsolve(lambda chi: superradiant_instability_rate(n, l, m, axion_geometric_mass, BH_geometric_mass, chi) - 1/merger_timescale, 0.9)[0]
 
 
-def find_highest_achievable_mode(n, axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale) -> int:
+def find_highest_achievable_mode(n: int,
+                                 axion_geometric_mass: float,
+                                 BH_geometric_mass: float,
+                                 initial_BH_spin: float,
+                                 merger_timescale: float) -> int:
     """
     Calculates the highest mode of the axion cloud that can be populated.
     
     Only considers contributions from the dominant modes, i.e. modes of the form [n, l, m] = [n, m, m].
 
     Args:
-        n (int): The adjusted principal quantum number n-l-m. For the dominant modes, we generically have n=0.
-        axion_geometric_mass (float): The axion mass, expressed as its Compton frequency m_eV/hbar. 
-        BH_geometric_mass (float): The black hole mass, expressed in units of time G*M_BH/c^3.
-        initial_BH_spin (float): The initial BH spin, expressed as a dimensionless constant chi between 0 and 1.
-        merger_timescale (float): The timescale on which the two black holes merge, in seconds.
+        n (int): Adjusted principal quantum number n-l-m. For the dominant modes, we generically have n=0.
+        axion_geometric_mass (float): Axion mass, expressed as its Compton frequency m_eV/hbar. 
+        BH_geometric_mass (float): Black hole mass, expressed in units of time G*M_BH/c^3.
+        initial_BH_spin (float): Initial BH spin, expressed as a dimensionless constant chi between 0 and 1.
+        merger_timescale (float): Timescale on which the two black holes merge, in seconds.
 
     Returns:
-        int: The maximum value of m such that [n, m, m] is an accessible superradiant mode.
+        int: Maximum value of m such that [n, m, m] is an accessible superradiant mode.
     """
     maximum_checked_mode = 3
     previous_spin = initial_BH_spin
@@ -108,18 +134,21 @@ def find_highest_achievable_mode(n, axion_geometric_mass, BH_geometric_mass, ini
     return maximum_checked_mode
 
 
-def final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale) -> float:
+def final_BH_spin(axion_geometric_mass: float,
+                  BH_geometric_mass: float,
+                  initial_BH_spin: float,
+                  merger_timescale: float) -> float:
     """
     Calcluates the final spin of the black hole post-merger, assuming superradiance occurs.
 
     Args:
-        axion_geometric_mass (float): The axion mass, expressed as its Compton frequency m_eV/hbar. 
-        BH_geometric_mass (float): The black hole mass, expressed in units of time G*M_BH/c^3.
-        initial_BH_spin (float): The initial BH spin, expressed as a dimensionless constant chi between 0 and 1.
-        merger_timescale (float): The timescale on which the two black holes merge, in seconds.
+        axion_geometric_mass (float): Axion mass, expressed as its Compton frequency m_eV/hbar. 
+        BH_geometric_mass (float): Black hole mass, expressed in units of time G*M_BH/c^3.
+        initial_BH_spin (float): Initial BH spin, expressed as a dimensionless constant chi between 0 and 1.
+        merger_timescale (float): Timescale on which the two black holes merge, in seconds.
 
     Returns:
-        float: The final dimensionless spin of the black hole.
+        float: Final dimensionless spin of the black hole.
     """
     l_m_max = find_highest_achievable_mode(0, axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale)
 
@@ -131,41 +160,45 @@ def final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merg
 
 
 _final_BH_spin_vec = np.vectorize(final_BH_spin, otypes=[float])
-def final_BH_spin_vec(axion_geometric_mass, BH_geometric_masses, initial_BH_spins, merger_timescale):
+
+def final_BH_spin_vec(axion_geometric_mass: float,
+                      BH_geometric_masses: NDArray[np.float64],
+                      initial_BH_spins: NDArray[np.float64],
+                      merger_timescale: float) -> NDArray[np.float64]:
     """
     Calcluates the final spin of the black hole post-merger, assuming superradiance occurs. Vectorized for enhanced performance.
 
     Args:
         axion_geometric_mass (float): The axion mass, expressed as its Compton frequency m_eV/hbar. 
-        BH_geometric_masses (np.array(float)): The black hole masses, expressed in units of time G*M_BH/c^3.
-        initial_BH_spins (np.array(float)): The initial BH spins, expressed as a dimensionless constant chi between 0 and 1.
+        BH_geometric_masses (NDArray[np.float64]): The black hole masses, expressed in units of time G*M_BH/c^3.
+        initial_BH_spins (NDArray[np.float64]): The initial BH spins, expressed as a dimensionless constant chi between 0 and 1.
         merger_timescale (float): The timescale on which the two black holes merge, in seconds.
 
     Returns:
-        float: The final dimensionless spins of the black hole.
+        NDArray[np.float64]: The final dimensionless spins of the black holes.
     """
     return _final_BH_spin_vec(axion_geometric_mass, BH_geometric_masses, initial_BH_spins, merger_timescale)
 
-TEN_BILLION_YEARS_IN_SECONDS = (10 * units.Gyr).to(units.s).value # type: ignore
-M_SOL_TO_GEOMETRIC = (consts.G  * consts.M_sun / consts.c**3).to(units.s).value # type: ignore
-EV_TO_GEOMETRIC = (1 * units.eV / consts.hbar).to(units.Hz).value # type: ignore
+# TEN_BILLION_YEARS_IN_SECONDS = (10 * units.Gyr).to(units.s).value # type: ignore
+# M_SOL_TO_GEOMETRIC = (consts.G  * consts.M_sun / consts.c**3).to(units.s).value # type: ignore
+# EV_TO_GEOMETRIC = (1 * units.eV / consts.hbar).to(units.Hz).value # type: ignore
 
 # print(final_BH_spin_vec(1e-12 * EV_TO_GEOMETRIC, 5*M_SOL_TO_GEOMETRIC, 0.7, TEN_BILLION_YEARS_IN_SECONDS))
 
-def calculate_everything(BH_mass_M_sol, axion_mass_eV, initial_BH_spin, merger_timescale):
-    if not (0 <= initial_BH_spin <= 1):
-        raise ValueError("Initial dimensionless BH spin must be between 0 and 1.")
+# def calculate_everything(BH_mass_M_sol, axion_mass_eV, initial_BH_spin, merger_timescale):
+#     if not (0 <= initial_BH_spin <= 1):
+#         raise ValueError("Initial dimensionless BH spin must be between 0 and 1.")
     
-    BH_geometric_mass = BH_mass_M_sol * M_SOL_TO_GEOMETRIC
-    axion_geometric_mass = axion_mass_eV * EV_TO_GEOMETRIC
-    highest_achievable_mode = find_highest_achievable_mode(0, axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale)
+#     BH_geometric_mass = BH_mass_M_sol * M_SOL_TO_GEOMETRIC
+#     axion_geometric_mass = axion_mass_eV * EV_TO_GEOMETRIC
+#     highest_achievable_mode = find_highest_achievable_mode(0, axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale)
     
-    print(f"BH mass = {BH_geometric_mass} M_sol")
-    print(f"axion mass = {axion_mass_eV} eV")
-    print(f"initial spin chi_F = {initial_BH_spin}\n\n")
-    superradiance_gamma = superradiant_instability_rate(0, 1, 1, axion_geometric_mass, BH_geometric_mass, initial_BH_spin)
+#     print(f"BH mass = {BH_geometric_mass} M_sol")
+#     print(f"axion mass = {axion_mass_eV} eV")
+#     print(f"initial spin chi_F = {initial_BH_spin}\n\n")
+#     superradiance_gamma = superradiant_instability_rate(0, 1, 1, axion_geometric_mass, BH_geometric_mass, initial_BH_spin)
 
-    print(f"Superradiant rate: {superradiance_gamma}")
-    print(f"Instability timescale: {1/superradiance_gamma}")
-    print(f"Highest achievable mode: {highest_achievable_mode}")
-    print(f"Final BH spin: {final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale)}")
+#     print(f"Superradiant rate: {superradiance_gamma}")
+#     print(f"Instability timescale: {1/superradiance_gamma}")
+#     print(f"Highest achievable mode: {highest_achievable_mode}")
+#     print(f"Final BH spin: {final_BH_spin(axion_geometric_mass, BH_geometric_mass, initial_BH_spin, merger_timescale)}")
